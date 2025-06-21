@@ -1,0 +1,46 @@
+# Node modules
+node_modules/
+.npm/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.code-workspace
+
+# Output folders
+dist/
+build/
+coverage/
+
+# CLI symlink (if using npm link)
+*.tgz
+
+# Docker artifacts
+*.tar
+docker-image.tar
+.dockerignore
+
+# CDK/Terraform state (if used)
+cdk.out/
+terraform.tfstate
+terraform.tfstate.*
+
+# AWS credentials (never commit)
+.aws/
+
+# Yarn/PNPM (if used)
+yarn.lock
+pnpm-lock.yaml
