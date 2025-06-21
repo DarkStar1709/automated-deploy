@@ -1,0 +1,24 @@
+{
+  "name": "automated-deploy",
+  "version": "1.0.0",
+  "description": "automatic deployment",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DarkStar1709/automated-deploy.git"
+  },
+  "keywords": [
+    "automation",
+    "deployment",
+    "script"
+  ],
+  "author": "DarkStar1709",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DarkStar1709/automated-deploy/issues"
+  },
+  "homepage": "https://github.com/DarkStar1709/automated-deploy#readme"
+}
