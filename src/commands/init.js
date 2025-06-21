@@ -12,7 +12,7 @@ export default async function initCommand(projectPath = ".", options) {
   logger.debug("Options:", options);
 
   try {
-    await analyzeProject(resolvedPath, options.ai !== false); // defaults to true
+    await analyzeProject(resolvedPath, options.ai !== false); 
     logger.success("✅ Initialization completed.");
   } catch (error) {
     logger.error("❌ Initialization failed:", error.message);

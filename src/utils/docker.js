@@ -1,4 +1,4 @@
-import execa from "execa";
+import { execa } from "execa";
 import path from "path";
 import fs from "fs-extra";
 import logger from "./logger.js";
