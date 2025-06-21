@@ -2,8 +2,10 @@
 
 import path from "path";
 import fs from "fs-extra";
-import logger from "../utils/logger.js";
+import Logger from "../utils/logger.js";
 import { buildDockerImage } from "../utils/docker.js";
+
+const logger = new Logger();
 
 export default async function deployCommand(projectPath, options) {
   console.log("🚀 Deploy command triggered!");

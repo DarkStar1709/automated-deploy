@@ -1,8 +1,10 @@
 // src/commands/init.js
 
 import path from "path";
-import logger from "../utils/logger.js";
+import Logger from "../utils/logger.js";
 import analyzeProject from "../ai/analyzeProject.js";
+
+const logger = new Logger();
 
 export default async function initCommand(projectPath = ".", options) {
   const resolvedPath = path.resolve(projectPath);
