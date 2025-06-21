@@ -11,12 +11,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const require = createRequire(import.meta.url);
-const packageJson = require("./package.json");
+const packageJson = require(path.resolve(__dirname, "../package.json"));
+
 
 // Import commands
-const initCommand = require("../src/commands/init");
-const deployCommand = require("../src/commands/deploy");
-const generateCICDCommand = require("../src/commands/generateCICD");
+import initCommand from "../src/commands/init.js";
+import deployCommand from "../src/commands/deploy.js";
+import generateCICDCommand from "../src/commands/generateCICD.js";
 
 const program = new Command();
 
@@ -153,12 +154,12 @@ program.exitOverride((err) => {
 
 // Environment checks
 if (
-  !process.env.OPENAI_API_KEY &&
+  !process.env.GEMINI_API_KEY &&
   !program.args.includes("--help") &&
   !program.args.includes("-h")
 ) {
   console.warn(
-    chalk.yellow("⚠️  Warning: OPENAI_API_KEY not found in environment")
+    chalk.yellow("⚠️  Warning: GEMINI_API_KEY not found in environment")
   );
   console.log(
     chalk.dim(
@@ -167,10 +168,13 @@ if (
   );
 }
 
+
 // Parse command line arguments
 program.parse();
 
 // Show help if no command provided
 if (!process.argv.slice(2).length) {
   program.outputHelp();
+} else {
+  program.parse();
 }
