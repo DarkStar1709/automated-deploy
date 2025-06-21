@@ -2,8 +2,10 @@ import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import ejs from "ejs";
-import logger from "../utils/logger.js"; // if you're using ESModules
+import Logger from "../utils/logger.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const logger = new Logger();
 
 // Setup Gemini
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);

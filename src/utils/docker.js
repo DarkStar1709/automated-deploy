@@ -1,7 +1,8 @@
-import execa from "execa";
+import { execa } from "execa";
 import path from "path";
 import fs from "fs-extra";
-import logger from "./logger.js";
+import Logger from "../utils/logger.js";
+const logger = new Logger();
 
 export async function buildDockerImage(projectPath, imageName) {
   const dockerfilePath = path.join(projectPath, "Dockerfile");

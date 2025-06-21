@@ -6,6 +6,9 @@ import chalk from "chalk";
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
+import Logger from "../utils/logger.js";
+
+const logger = new Logger();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -130,7 +133,6 @@ program
   .option("--service <name>", "ECS service name")
   .option("--tail", "Follow log output")
   .action(async (options) => {
-    const logger = require("../src/utils/logger");
     logger.info("Fetching logs...");
     // Implementation will be added later
     logger.warn("Logs command not yet implemented");

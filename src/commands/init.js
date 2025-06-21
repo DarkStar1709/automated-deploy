@@ -1,8 +1,10 @@
 // src/commands/init.js
 
 import path from "path";
-import logger from "../utils/logger.js";
+import Logger from "../utils/logger.js";
 import analyzeProject from "../ai/analyzeProject.js";
+
+const logger = new Logger();
 
 export default async function initCommand(projectPath = ".", options) {
   const resolvedPath = path.resolve(projectPath);
@@ -12,7 +14,7 @@ export default async function initCommand(projectPath = ".", options) {
   logger.debug("Options:", options);
 
   try {
-    await analyzeProject(resolvedPath, options.ai !== false); // defaults to true
+    await analyzeProject(resolvedPath, options.ai !== false); 
     logger.success("✅ Initialization completed.");
   } catch (error) {
     logger.error("❌ Initialization failed:", error.message);

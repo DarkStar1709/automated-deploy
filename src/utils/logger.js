@@ -1,6 +1,6 @@
-const chalk = require('chalk');
-const logSymbols = require('log-symbols');
-const ora = require('ora');
+import chalk from 'chalk';
+import logSymbols from 'log-symbols';
+import ora from 'ora';
 
 class Logger {
   constructor() {
@@ -210,4 +210,4 @@ class Logger {
   }
 }
 
-module.exports = new Logger();
+export default Logger;
