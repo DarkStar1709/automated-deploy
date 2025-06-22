@@ -77,19 +77,56 @@ program
   .option("-f, --force", "Overwrite existing Docker files")
   .option("--no-ai", "Skip AI analysis and use templates")
   .action(async (projectPath, options) => {
-    // Check for Gemini API key if AI is enabled
+    // Fetch Gemini API key if AI is enabled
     if (options.ai !== false) {
-      const geminiKey = await getConfigValue("gemini.apiKey") || process.env.GEMINI_API_KEY;
+      let geminiKey = await getConfigValue("GEMINI_API_KEY"); // From your config file
+      if (!geminiKey) {
+        geminiKey = process.env.GEMINI_API_KEY; // Fallback to .env or system environment
+      }
+
       if (!geminiKey) {
         logger.warn("⚠️  Gemini API key not found. AI features will be disabled.");
-        logger.info("Configure with: mydeploy config set gemini.apiKey <your-key>");
-        logger.info("Or set GEMINI_API_KEY environment variable");
-        options.ai = false;
+        logger.info("You can configure it using:");
+        logger.info(chalk.cyan("mydeploy config set GEMINI_API_KEY <your-key>"));
+        logger.info("Or set the GEMINI_API_KEY in your .env file.");
+        options.ai = false; // Disable AI if key not found
+      } else {
+        // Make the API key available globally if needed
+        process.env.GEMINI_API_KEY = geminiKey;
+        logger.success("✅ Gemini API key loaded successfully.");
       }
     }
-    
+
     await initCommand(projectPath, options);
   });
+
+
+program
+  .command("config")
+  .description("Configure API keys")
+  .argument("<action>", "set or get")
+  .argument("<key>", "Config key")
+  .argument("[value]", 'Value to set (if using "set")')
+  .action(async (action, key, value) => {
+    if (action === "set") {
+      if (!value) {
+        console.log(chalk.red("Value required for setting config."));
+        process.exit(1);
+      }
+      await setConfig(key, value);
+    } else if (action === "get") {
+      const result = await getConfigValue(key);
+      if (result) {
+        console.log(chalk.cyan(`${key} = ${result}`));
+      } else {
+        console.log(chalk.yellow(`⚠️  No value set for ${key}`));
+      }
+    } else {
+      console.log(chalk.red('Unknown action. Use "set" or "get".'));
+    }
+  });
+
+
 
 program
   .command("deploy")
@@ -133,13 +170,6 @@ program
   )
   .action(generateCICDCommand);
 
-program
-  .command("config")
-  .description("Configure API keys and settings")
-  .argument("<action>", "Action: set, get, remove, list, init")
-  .argument("[key]", "Configuration key")
-  .argument("[value]", 'Value to set (for "set" action)')
-  .action(configCommand);
 
 // Additional utility commands
 program

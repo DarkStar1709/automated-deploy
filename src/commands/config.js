@@ -255,7 +255,7 @@ export async function validateConfig(requiredKeys = []) {
   return true;
 }
 
-// Export config file location for other modules
+// Export con fig file location for other modules
 export { CONFIG_FILE, CONFIG_DIR };
 
 // Main config command handler
