@@ -121,7 +121,7 @@ export async function deployToECS({
 
     const newTaskDefParams = {
       family: oldTaskDef.family,
-      taskRoleArn: oldTaskDef.taskRoleArn,
+      taskRoleArn: oldTaskDef.taskRoleArn || "arn:aws:iam::187393211006:role/ecsTaskExecutionRolee",
       executionRoleArn: oldTaskDef.executionRoleArn,
       networkMode: oldTaskDef.networkMode,
       requiresCompatibilities: oldTaskDef.requiresCompatibilities,
