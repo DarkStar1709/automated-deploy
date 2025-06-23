@@ -26,6 +26,12 @@
   },
   "homepage": "https://github.com/DarkStar1709/automated-deploy#readme",
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.835.0",
+    "@aws-sdk/client-ec2": "^3.835.0",
+    "@aws-sdk/client-ecr": "^3.835.0",
+    "@aws-sdk/client-ecs": "^3.835.0",
+    "@aws-sdk/client-iam": "^3.835.0",
+    "@aws-sdk/client-sts": "^3.835.0",
     "@google/generative-ai": "^0.24.1",
     "aws-sdk": "^2.1692.0",
     "boxen": "^7.1.1",

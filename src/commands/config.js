@@ -46,67 +46,21 @@ async function saveConfig(config) {
 }
 
 // Set configuration value
+import { writeEnvKey } from '../utils/env.js';
+
 export async function setConfig(key, value) {
   try {
-    const config = await loadConfig();
-    
-    // Handle nested keys (e.g., "aws.region")
-    const keys = key.split('.');
-    let current = config;
-    
-    for (let i = 0; i < keys.length - 1; i++) {
-      if (!current[keys[i]]) {
-        current[keys[i]] = {};
-      }
-      current = current[keys[i]];
-    }
-    
-    current[keys[keys.length - 1]] = value;
-    
-    await saveConfig(config);
-    logger.success(`✅ Set ${key} = ${maskSensitiveValue(key, value)}`);
+    const envKey = key.toUpperCase().replace(/\./g, '_');
+    await writeEnvKey(envKey, value);
+    logger.success(`✅ Set ${key} = ${maskSensitiveValue(key, value)} in .env`);
   } catch (error) {
     logger.error("Failed to set config:", error.message);
     throw error;
   }
 }
 
-// Get configuration value
-export async function getConfig(key) {
-  try {
-    const config = await loadConfig();
-    
-    if (!key) {
-      return config;
-    }
-    
-    // Handle nested keys
-    const keys = key.split('.');
-    let current = config;
-    
-    for (const k of keys) {
-      if (current[k] === undefined) {
-        return undefined;
-      }
-      current = current[k];
-    }
-    
-    return current;
-  } catch (error) {
-    logger.error("Failed to get config:", error.message);
-    throw error;
-  }
-}
-
 // Get configuration value with fallback to environment variable
 export async function getConfigValue(key) {
-  // First check config file
-  const configValue = await getConfig(key);
-  if (configValue !== undefined) {
-    return configValue;
-  }
-  
-  // Then check environment variables
   const envKey = key.toUpperCase().replace(/\./g, '_');
   return process.env[envKey];
 }
