@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/DarkStar1709/automated-deploy#readme",
   "dependencies": {
+    "@ai-sdk/deepseek": "^0.2.14",
     "@aws-sdk/client-cloudwatch-logs": "^3.835.0",
     "@aws-sdk/client-ec2": "^3.835.0",
     "@aws-sdk/client-ecr": "^3.835.0",
@@ -33,6 +34,7 @@
     "@aws-sdk/client-iam": "^3.835.0",
     "@aws-sdk/client-sts": "^3.835.0",
     "@google/generative-ai": "^0.24.1",
+    "ai": "^4.3.16",
     "aws-sdk": "^2.1692.0",
     "boxen": "^7.1.1",
     "chalk": "^5.4.1",
@@ -41,6 +43,7 @@
     "dotenv": "^16.5.0",
     "ejs": "^3.1.10",
     "execa": "^8.0.1",
+    "express": "^5.1.0",
     "figlet": "^1.6.0",
     "fs-extra": "^11.3.0",
     "inquirer": "^12.6.3",

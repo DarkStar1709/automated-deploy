@@ -40,7 +40,7 @@ export const detectFramework = async (projectPath) => {
 // Prompt templates
 export async function generateDockerfile(framework, projectPath) {
   try {
-    const model = gemini.getGenerativeModel({ model: "gemini-pro" });
+    const model = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     let context = "";
     if (framework === "node-express") {

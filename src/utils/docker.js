@@ -25,8 +25,15 @@ export async function buildDockerImage(projectPath, imageName) {
     logger.succeedSpinner(spinnerId, `✅ Image built: ${imageName}`);
     return imageName;
   } catch (error) {
-    logger.failSpinner(spinnerId, "❌ Failed to build Docker image");
-    logger.debug(error.message);
-    process.exit(1);
+  logger.failSpinner(spinnerId, "❌ Failed to build Docker image");
+
+  if (error.stderr) {
+    logger.error("Docker Error Output:\n" + error.stderr);
+  } else {
+    logger.error("Error:\n" + error.message);
   }
+
+  process.exit(1);
+}
+
 }
