@@ -104,6 +104,8 @@ SERVICE_NAME=your-service-name
 - ☕ Java (Spring Boot)
 
 ---
+## 🌍 Demo Video
+https://github.com/user-attachments/assets/43450154-222b-4cbd-9c7d-892df618aa97
 
 ## 📦 NPM Package Info
 
