@@ -7,11 +7,11 @@
 ## 📦 Installation
 
 ```bash
-npm install -g automated-deploy
+npm install -g automatic-deploy
 ```
 or
 ```bash
-npm i automated-deploy
+npm i automatic-deploy
 ```
 
 ---
