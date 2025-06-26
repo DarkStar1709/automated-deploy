@@ -63,7 +63,8 @@ export default async function deployCommand(projectPath = ".", options) {
     const { repositoryUri } = await createResources({
       clusterName,
       serviceName,         
-      region
+      region,
+      repositoryName
     });
 
     logger.step(3, 4, "Pushing image to ECR");

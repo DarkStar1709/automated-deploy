@@ -12,7 +12,7 @@
     }
   ],
   "description": "automatic deployment",
-  "main": "cli.js",
+  "main": "bin/cli.js",
   "bin": {
     "mydeploy": "./bin/cli.js"
   },

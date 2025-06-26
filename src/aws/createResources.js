@@ -49,16 +49,12 @@ export async function createResources({
 
   logger.title("🏗️  Creating AWS Resources");
 
-  /* ---------- Account ---------- */
   const accountId = (await sts.send(new GetCallerIdentityCommand({}))).Account;
 
-  /* ---------- ECR repo ---------- */
   const repositoryUri = await ensureECR(ecr, repositoryName);
 
-  /* ---------- ECS cluster ---------- */
-  await ensureCluster(ecs, clusterName);
+  const clusterArn = await ensureCluster(ecs, clusterName);
 
-  /* ---------- IAM roles ---------- */
   const executionRoleArn = await ensureRole(
     iam,
     accountId,
@@ -72,10 +68,8 @@ export async function createResources({
     "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
   );
 
-  /* ---------- VPC / SG ---------- */
   const networkConfig = await getNetworkConfig(ec2, repositoryName);
 
-  /* ---------- Task definition ---------- */
   const taskDefinitionArn = await registerTaskDefinition(ecs, {
     repositoryName,
     repositoryUri,
@@ -87,8 +81,7 @@ export async function createResources({
     region,
   });
 
-  /* ---------- Service ---------- */
-  await ensureService(ecs, {
+  const serviceArn = await ensureService(ecs, {
     clusterName,
     serviceName,
     taskDefinitionArn,
@@ -99,7 +92,9 @@ export async function createResources({
   return {
     repositoryUri,
     clusterName,
+    clusterArn,
     serviceName,
+    serviceArn,
     taskDefinitionArn,
     executionRoleArn,
     taskRoleArn,
@@ -112,18 +107,18 @@ async function ensureECR(ecr, repo) {
     const { repositories } = await ecr.send(
       new DescribeRepositoriesCommand({ repositoryNames: [repo] })
     );
-    logger.success(`✅ ECR exists: ${repositories[0].repositoryUri}`);
+    logger.success(`✅ ECR exists → ${repositories[0].repositoryUri}`);
     return repositories[0].repositoryUri;
   } catch (e) {
     if (e.name !== "RepositoryNotFoundException") throw e;
-    logger.startSpinner("ecr", `Creating ECR repo ${repo}`);
+    logger.startSpinner("ecr", `Creating ECR repo ${repo}…`);
     const { repository } = await ecr.send(
       new CreateRepositoryCommand({
         repositoryName: repo,
         imageScanningConfiguration: { scanOnPush: true },
       })
     );
-    logger.succeedSpinner("ecr", "✅ Created");
+    logger.succeedSpinner("ecr", `✅ Created ECR repo → ${repository.repositoryUri}`);
     return repository.repositoryUri;
   }
 }
@@ -133,29 +128,28 @@ async function ensureCluster(ecs, name) {
     new DescribeClustersCommand({ clusters: [name] })
   );
   if (clusters[0]?.status === "ACTIVE") {
-    logger.success(`✅ Cluster exists: ${name}`);
-    return;
+    logger.success(`✅ Cluster exists → ${clusters[0].clusterArn}`);
+    return clusters[0].clusterArn;
   }
-  logger.startSpinner("cluster", `Creating cluster ${name}`);
-  await ecs.send(
+  logger.startSpinner("cluster", `Creating cluster ${name}…`);
+  const { cluster } = await ecs.send(
     new CreateClusterCommand({
       clusterName: name,
       capacityProviders: ["FARGATE"],
-      defaultCapacityProviderStrategy: [
-        { capacityProvider: "FARGATE", weight: 1 },
-      ],
+      defaultCapacityProviderStrategy: [{ capacityProvider: "FARGATE", weight: 1 }],
     })
   );
-  logger.succeedSpinner("cluster", "✅ Created");
+  logger.succeedSpinner("cluster", `✅ Created cluster → ${cluster.clusterArn}`);
+  return cluster.clusterArn;
 }
 
 async function ensureRole(iam, account, roleName, policyArn) {
   const fullArn = `arn:aws:iam::${account}:role/${roleName}`;
   try {
     await iam.send(new GetRoleCommand({ RoleName: roleName }));
-    logger.success(`✅ Role exists: ${roleName}`);
+    logger.success(`✅ Role exists → ${fullArn}`);
   } catch {
-    logger.startSpinner("iam", `Creating role ${roleName}`);
+    logger.startSpinner("iam", `Creating IAM role ${roleName}…`);
     await iam.send(
       new CreateRoleCommand({
         RoleName: roleName,
@@ -174,22 +168,18 @@ async function ensureRole(iam, account, roleName, policyArn) {
     await iam.send(
       new AttachRolePolicyCommand({ RoleName: roleName, PolicyArn: policyArn })
     );
-    logger.succeedSpinner("iam", "✅ Role ready");
+    logger.succeedSpinner("iam", `✅ Created role → ${fullArn}`);
   }
   return fullArn;
 }
 
 async function getNetworkConfig(ec2, project) {
   const { Vpcs } = await ec2.send(
-    new DescribeVpcsCommand({
-      Filters: [{ Name: "is-default", Values: ["true"] }],
-    })
+    new DescribeVpcsCommand({ Filters: [{ Name: "is-default", Values: ["true"] }] })
   );
   const vpcId = Vpcs[0].VpcId;
   const { Subnets } = await ec2.send(
-    new DescribeSubnetsCommand({
-      Filters: [{ Name: "vpc-id", Values: [vpcId] }],
-    })
+    new DescribeSubnetsCommand({ Filters: [{ Name: "vpc-id", Values: [vpcId] }] })
   );
   const subnetIds = Subnets.map((s) => s.SubnetId);
   const sgId = await ensureSG(ec2, vpcId, project);
@@ -210,8 +200,11 @@ async function ensureSG(ec2, vpcId, project) {
       ],
     })
   );
-  if (SecurityGroups.length) return SecurityGroups[0].GroupId;
-
+  if (SecurityGroups.length) {
+    logger.success(`✅ Security group exists → ${SecurityGroups[0].GroupId}`);
+    return SecurityGroups[0].GroupId;
+  }
+  logger.startSpinner("sg", `Creating security group ${name}…`);
   const { GroupId } = await ec2.send(
     new CreateSecurityGroupCommand({
       GroupName: name,
@@ -223,27 +216,13 @@ async function ensureSG(ec2, vpcId, project) {
     new AuthorizeSecurityGroupIngressCommand({
       GroupId,
       IpPermissions: [
-        {
-          IpProtocol: "tcp",
-          FromPort: 80,
-          ToPort: 80,
-          IpRanges: [{ CidrIp: "0.0.0.0/0" }],
-        },
-        {
-          IpProtocol: "tcp",
-          FromPort: 443,
-          ToPort: 443,
-          IpRanges: [{ CidrIp: "0.0.0.0/0" }],
-        },
-        {
-          IpProtocol: "tcp",
-          FromPort: 3000,
-          ToPort: 3000,
-          IpRanges: [{ CidrIp: "0.0.0.0/0" }],
-        },
+        { IpProtocol: "tcp", FromPort: 80, ToPort: 80, IpRanges: [{ CidrIp: "0.0.0.0/0" }] },
+        { IpProtocol: "tcp", FromPort: 443, ToPort: 443, IpRanges: [{ CidrIp: "0.0.0.0/0" }] },
+        { IpProtocol: "tcp", FromPort: 3000, ToPort: 3000, IpRanges: [{ CidrIp: "0.0.0.0/0" }] },
       ],
     })
   );
+  logger.succeedSpinner("sg", `✅ Created SG → ${GroupId}`);
   return GroupId;
 }
 
@@ -289,7 +268,7 @@ async function registerTaskDefinition(
       ],
     })
   );
-  logger.success(`✅ TaskDef ${taskDefinition.revision}`);
+  logger.success(`✅ Task definition registered → ${taskDefinition.taskDefinitionArn}`);
   return taskDefinition.taskDefinitionArn;
 }
 
@@ -304,10 +283,11 @@ async function ensureService(
     })
   );
   if (services[0]?.status === "ACTIVE") {
-    logger.success(`✅ Service active: ${serviceName}`);
-    return;
+    logger.success(`✅ Service active → ${services[0].serviceArn}`);
+    return services[0].serviceArn;
   }
-  await ecs.send(
+  logger.startSpinner("service", `Creating service ${serviceName}…`);
+  const { service } = await ecs.send(
     new CreateServiceCommand({
       cluster: clusterName,
       serviceName,
@@ -318,5 +298,6 @@ async function ensureService(
       networkConfiguration: { awsvpcConfiguration: networkConfig },
     })
   );
-  logger.success(`✅ Service created: ${serviceName}`);
+  logger.succeedSpinner("service", `✅ Created service → ${service.serviceArn}`);
+  return service.serviceArn;
 }
