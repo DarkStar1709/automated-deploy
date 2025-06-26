@@ -19,7 +19,6 @@ const packageJson = require(path.resolve(__dirname, "../package.json"));
 // Import commands
 import initCommand from "../src/commands/init.js";
 import deployCommand from "../src/commands/deploy.js";
-import generateCICDCommand from "../src/commands/generateCICD.js";
 import { getConfigValue, setConfig } from "../src/commands/config.js";
 
 const program = new Command();
@@ -135,59 +134,6 @@ program
     }
 
     await deployCommand(projectPath, options);
-  });
-
-program
-  .command("generate-cicd")
-  .description("Generate GitHub Actions CI/CD workflow")
-  .argument("[project-path]", "Path to project directory", ".")
-  .option("--provider <provider>", "CI/CD provider", "github")
-  .option("--env <environments>", "Deployment environments (comma-separated)", "staging,production")
-  .action(generateCICDCommand);
-
-program
-  .command("status")
-  .description("Check deployment status")
-  .option("--cluster <name>", "ECS cluster name")
-  .option("--service <name>", "ECS service name")
-  .option("--region <region>", "AWS region")
-  .action(async (options) => {
-    logger.info("Checking deployment status...");
-    if (!options.region) {
-      options.region = await getConfigValue("AWS_REGION") || process.env.AWS_DEFAULT_REGION || "us-east-1";
-    }
-    logger.warn("Status command not yet implemented");
-  });
-
-program
-  .command("logs")
-  .description("View application logs")
-  .option("--cluster <name>", "ECS cluster name")
-  .option("--service <name>", "ECS service name")
-  .option("--region <region>", "AWS region")
-  .option("--tail", "Follow log output")
-  .option("--lines <count>", "Number of lines to show", "100")
-  .action(async (options) => {
-    logger.info("Fetching logs...");
-    if (!options.region) {
-      options.region = await getConfigValue("AWS_REGION") || process.env.AWS_DEFAULT_REGION || "us-east-1";
-    }
-    logger.warn("Logs command not yet implemented");
-  });
-
-program
-  .command("cleanup")
-  .description("Clean up AWS resources")
-  .option("--cluster <name>", "ECS cluster name")
-  .option("--repository <name>", "ECR repository name")
-  .option("--region <region>", "AWS region")
-  .option("--force", "Skip confirmation prompts")
-  .action(async (options) => {
-    logger.info("Cleaning up resources...");
-    if (!options.region) {
-      options.region = await getConfigValue("AWS_REGION") || process.env.AWS_DEFAULT_REGION || "us-east-1";
-    }
-    logger.warn("Cleanup command not yet implemented");
   });
 
 program.configureOutput({
