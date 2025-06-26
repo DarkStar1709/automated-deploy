@@ -1,7 +1,6 @@
 {
   "name": "automatic-deploy",
-  "version": "1.0.1",
-
+  "version": "1.0.2",
   "author": {
     "name": "Arnav Kumar",
     "url": "https://github.com/DarkStar1709"
@@ -12,22 +11,29 @@
       "url": "https://github.com/Yashagarwal9798"
     }
   ],
-
   "description": "automatic deployment",
   "main": "cli.js",
-  "bin": { "mydeploy": "./bin/cli.js" },
-  "scripts": { "test": "echo \"Error: no test specified\" && exit 1" },
-
+  "bin": {
+    "mydeploy": "./bin/cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DarkStar1709/automated-deploy.git"
   },
-  "keywords": ["automation", "deployment", "script"],
+  "keywords": [
+    "automation",
+    "deployment",
+    "script"
+  ],
   "type": "module",
   "license": "ISC",
-  "bugs": { "url": "https://github.com/DarkStar1709/automated-deploy/issues" },
+  "bugs": {
+    "url": "https://github.com/DarkStar1709/automated-deploy/issues"
+  },
   "homepage": "https://github.com/DarkStar1709/automated-deploy#readme",
-
   "dependencies": {
     "@ai-sdk/deepseek": "^0.2.14",
     "@aws-sdk/client-cloudwatch-logs": "^3.835.0",
