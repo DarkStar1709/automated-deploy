@@ -12,16 +12,13 @@ const logger = new Logger();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Config file location
 const CONFIG_DIR = path.join(os.homedir(), ".mydeploy");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 
-// Ensure config directory exists
 async function ensureConfigDir() {
   await fs.ensureDir(CONFIG_DIR);
 }
 
-// Load config file
 async function loadConfig() {
   try {
     if (await fs.pathExists(CONFIG_FILE)) {
@@ -34,7 +31,6 @@ async function loadConfig() {
   }
 }
 
-// Save config file
 async function saveConfig(config) {
   try {
     await ensureConfigDir();
@@ -45,7 +41,6 @@ async function saveConfig(config) {
   }
 }
 
-// Set configuration value
 import { writeEnvKey } from '../utils/env.js';
 
 export async function setConfig(key, value) {
@@ -59,13 +54,11 @@ export async function setConfig(key, value) {
   }
 }
 
-// Get configuration value with fallback to environment variable
 export async function getConfigValue(key) {
   const envKey = key.toUpperCase().replace(/\./g, '_');
   return process.env[envKey];
 }
 
-// Remove configuration value
 export async function removeConfig(key) {
   try {
     const config = await loadConfig();
@@ -91,7 +84,6 @@ export async function removeConfig(key) {
   }
 }
 
-// List all configuration
 export async function listConfig() {
   try {
     const config = await loadConfig();
@@ -109,7 +101,6 @@ export async function listConfig() {
   }
 }
 
-// Print config object recursively
 function printConfigObject(obj, prefix = '') {
   for (const [key, value] of Object.entries(obj)) {
     const fullKey = prefix ? `${prefix}.${key}` : key;
@@ -124,7 +115,6 @@ function printConfigObject(obj, prefix = '') {
   }
 }
 
-// Mask sensitive values for display
 function maskSensitiveValue(key, value) {
   const sensitiveKeys = ['key', 'secret', 'token', 'password', 'pass'];
   const lowerKey = key.toLowerCase();
@@ -139,7 +129,6 @@ function maskSensitiveValue(key, value) {
   return value;
 }
 
-// Initialize configuration with prompts
 export async function initConfig(options = {}) {
   logger.title("🔧 Configuration Setup");
   
@@ -157,14 +146,12 @@ export async function initConfig(options = {}) {
     console.log();
   }
   
-  // Gemini API Configuration
   if (!config.gemini?.apiKey && !process.env.GEMINI_API_KEY) {
     logger.warn("⚠️  Gemini API key not configured");
     logger.info("Get your API key from: https://makersuite.google.com/app/apikey");
     console.log();
   }
   
-  // Display current configuration
   if (Object.keys(config).length > 0) {
     logger.subtitle("Current Configuration:");
     printConfigObject(config);
@@ -172,7 +159,6 @@ export async function initConfig(options = {}) {
     logger.info("No configuration found. Use 'mydeploy config set <key> <value>' to configure.");
   }
   
-  // Suggestions
   logger.separator();
   logger.subtitle("Configuration Examples:");
   console.log(chalk.dim("  mydeploy config set aws.region us-east-1"));
@@ -181,7 +167,6 @@ export async function initConfig(options = {}) {
   console.log(chalk.dim("  mydeploy config set docker.registry your-registry"));
 }
 
-// Validate required configuration
 export async function validateConfig(requiredKeys = []) {
   const missing = [];
   
@@ -209,10 +194,8 @@ export async function validateConfig(requiredKeys = []) {
   return true;
 }
 
-// Export con fig file location for other modules
 export { CONFIG_FILE, CONFIG_DIR };
 
-// Main config command handler
 export default async function configCommand(action, key, value, options = {}) {
   try {
     switch (action.toLowerCase()) {

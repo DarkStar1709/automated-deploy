@@ -2,7 +2,7 @@
 
 import path from "path";
 import Logger from "../utils/logger.js";
-import analyzeProject from "../ai/analyzeProject.js";
+import { analyzeProject } from "../ai/analyzeProject.js";
 
 const logger = new Logger();
 

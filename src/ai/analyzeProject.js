@@ -1,148 +1,176 @@
+// src/ai/analyzeProject.js
 import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import ejs from "ejs";
+import { fileURLToPath } from "url";
 import Logger from "../utils/logger.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const logger = new Logger();
-
-// Setup Gemini
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Framework Detection
-export const detectFramework = async (projectPath) => {
-  if (fs.existsSync(path.join(projectPath, "package.json"))) {
-    const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, "package.json")));
+/* ------------------------------------------------------------------ */
+/* 1️⃣  FRAMEWORK DETECTION                                            */
+/* ------------------------------------------------------------------ */
+async function detectFramework(projectPath) {
+  const pj   = path.join(projectPath, "package.json");
+  const req  = path.join(projectPath, "requirements.txt");
+  const gom  = path.join(projectPath, "go.mod");
+  const pom  = path.join(projectPath, "pom.xml");
+
+  if (await fs.pathExists(pj)) {
+    const pkg = JSON.parse(await fs.readFile(pj, "utf8"));
     if (pkg.dependencies?.express || pkg.devDependencies?.express) {
       return "node-express";
     }
   }
-
-  if (fs.existsSync(path.join(projectPath, "requirements.txt"))) {
-    const content = fs.readFileSync(path.join(projectPath, "requirements.txt"), "utf-8");
-    if (content.toLowerCase().includes("django")) {
+  if (await fs.pathExists(req)) {
+    if ((await fs.readFile(req, "utf8")).toLowerCase().includes("django"))
       return "python-django";
-    }
   }
-
-  if (fs.existsSync(path.join(projectPath, "go.mod"))) {
-    return "go";
-  }
-
-  if (fs.existsSync(path.join(projectPath, "pom.xml"))) {
-    return "java-springboot";
-  }
-
+  if (await fs.pathExists(gom)) return "go";
+  if (await fs.pathExists(pom)) return "java-springboot";
   return null;
-};
+}
 
-// Prompt templates
-export async function generateDockerfile(framework, projectPath) {
+/* ------------------------------------------------------------------ */
+/* 2️⃣  BUILD CONTEXT + GENERATE WITH GEMINI                           */
+/* ------------------------------------------------------------------ */
+async function buildContext(framework, projectPath) {
+  switch (framework) {
+    case "node-express": {
+      const pkg = JSON.parse(
+        await fs.readFile(path.join(projectPath, "package.json"), "utf8")
+      );
+      return `package.json:\n${JSON.stringify(pkg, null, 2)}`;
+    }
+    case "python-django": {
+      const txt = await fs.readFile(
+        path.join(projectPath, "requirements.txt"),
+        "utf8"
+      );
+      return `requirements.txt:\n${txt}`;
+    }
+    case "go": {
+      const mod = await fs.readFile(path.join(projectPath, "go.mod"), "utf8");
+      return `go.mod:\n${mod}`;
+    }
+    case "java-springboot": {
+      const xml = await fs.readFile(path.join(projectPath, "pom.xml"), "utf8");
+      return `pom.xml:\n${xml}`;
+    }
+    default:
+      return "";
+  }
+}
+
+async function generateDockerfile(framework, projectPath) {
   try {
-    const model = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-    let context = "";
-    if (framework === "node-express") {
-      const pkgPath = path.join(projectPath, "package.json");
-      if (fs.existsSync(pkgPath)) {
-        const pkg = JSON.parse(await fs.readFile(pkgPath, "utf-8"));
-        context += `Project dependencies:\n${JSON.stringify(pkg.dependencies, null, 2)}\n`;
-        context += `Project scripts:\n${JSON.stringify(pkg.scripts, null, 2)}\n`;
-      }
-    }
-
-    if (framework === "python-django") {
-      const reqPath = path.join(projectPath, "requirements.txt");
-      if (fs.existsSync(reqPath)) {
-        const content = await fs.readFile(reqPath, "utf-8");
-        context += `requirements.txt content:\n${content}\n`;
-      }
-    }
-
-    // You can add similar logic for go.mod or pom.xml later
+    const model   = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const context = await buildContext(framework, projectPath);
 
     const prompt = `
-You are a DevOps expert.
+You are a senior DevOps engineer.
 
-Generate a **production-grade Dockerfile** for a ${framework.replace("-", " ")} application.
+Generate a production-ready **Dockerfile** for a ${framework.replace(
+      "-",
+      " "
+    )} project.
 
-Project context:
+Context:
 ${context}
 
 Requirements:
-- Best practices for this stack
-- Proper base image
-- Port exposure
-- Entry point (start command)
-- Any build/compile steps if necessary
-
-Output ONLY the Dockerfile content.
+- Use the best base image for this stack
+- Multi-stage build if it shrinks the final image
+- Expose the correct port
+- Correct entry command
+- Include build steps (npm ci, pip install, go build, mvn package, etc.)
+Return ONLY the Dockerfile (no markdown fences).
     `.trim();
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
+    const { response } = await model.generateContent(prompt);
+    let dockerfile = response.text().trim();
+    const match = dockerfile.match(/```(?:dockerfile)?\s*([\s\S]*?)```/i);
+    if (match) dockerfile = match[1].trim();
 
-    return response.text();
-  } catch (error) {
-    logger.error("❌ Gemini API Error:", error.message);
+    return dockerfile;
+  } catch (err) {
+    logger.error("❌ Gemini API error:", err.message);
     return null;
   }
 }
-// Fallback from template
-const fallbackFromTemplate = async (framework, projectPath) => {
-  const templatePath = path.resolve(`templates/Dockerfile-${framework}.ejs`);
-  const outputPath = path.join(projectPath, "Dockerfile");
 
-  if (fs.existsSync(templatePath)) {
-    const rendered = await ejs.renderFile(templatePath, {}, {});
-    await fs.writeFile(outputPath, rendered);
-    logger.warn("⚠️  Fallback Dockerfile template used.");
-    logger.fileOperation("create", outputPath);
-  } else {
-    console.log(chalk.red(`No fallback template found for ${framework}`));
+/* ------------------------------------------------------------------ */
+/* 3️⃣  FALLBACK TO TEMPLATE                                           */
+/* ------------------------------------------------------------------ */
+async function fallbackTemplate(framework, destPath) {
+  const template = path.join(
+    __dirname,
+    "../../templates",
+    `Dockerfile-${framework}.ejs`
+  );
+
+  if (!(await fs.pathExists(template))) {
+    logger.error(`❌ No fallback template found for ${framework}`);
+    return false;
   }
-};
 
-// Main entry
-const analyzeProject = async (projectPath, useAI = true) => {
-  logger.title("🔍 Analyzing project...");
+  const rendered = await ejs.renderFile(template, {}, {});
+  await fs.writeFile(destPath, rendered);
+  logger.warn("⚠️  Fallback Dockerfile template used.");
+  logger.fileOperation("create", destPath);
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* 4️⃣  MAIN ORCHESTRATOR                                              */
+/* ------------------------------------------------------------------ */
+async function analyzeProject(
+  projectPath,
+  { useAI = true, force = false } = {}
+) {
+  logger.title("🔍 Analyzing project…");
 
   const framework = await detectFramework(projectPath);
   if (!framework) {
-    logger.error("❌ Could not detect supported framework.");
+    logger.error("❌ Unsupported or undetected framework.");
     return;
   }
+  logger.success(`📦 Detected: ${framework}`);
 
-  logger.success(`📦 Detected framework: ${framework}`);
-
-  const dockerfilePath = path.join(projectPath, "Dockerfile");
-  if (fs.existsSync(dockerfilePath)) {
+  const dockerPath = path.join(projectPath, "Dockerfile");
+  if (await fs.pathExists(dockerPath) && !force) {
     logger.warn("⚠️  Dockerfile already exists. Use --force to overwrite.");
     return;
   }
 
- 
   let content = null;
-  const spinnerId = "docker-gen";
+  const spinID = "docker-gen";
 
   if (useAI) {
-    logger.startSpinner(spinnerId, "Generating Dockerfile using Gemini AI...");
-    content = await generateDockerfile(framework,projectPath);
-    if (content) {
-      logger.succeedSpinner(spinnerId, "✅ Dockerfile generated by Gemini AI");
+    logger.startSpinner(spinID, "🤖 Generating Dockerfile with Gemini…");
+    content = await generateDockerfile(framework, projectPath);
+    if (content && content.trim()) {
+      logger.succeedSpinner(spinID, "✅ Dockerfile generated by Gemini");
     } else {
-      logger.failSpinner(spinnerId, "❌ Failed to generate with AI. Using fallback...");
+      logger.failSpinner(spinID, "❌ Gemini failed or returned empty result");
+      content = null;
     }
   }
 
   if (content) {
-    await fs.writeFile(dockerfilePath, content);
-    logger.fileOperation("create", dockerfilePath);
+    await fs.writeFile(dockerPath, content.trim());
+    logger.fileOperation("create", dockerPath);
   } else {
-    console.log(chalk.yellow("🛠 Falling back to EJS template..."));
-    await fallbackFromTemplate(framework, projectPath);
+    logger.info("🔄 Falling back to static template…");
+    await fallbackTemplate(framework, dockerPath);
   }
-};
+}
 
-export default analyzeProject;
+/* ------------------------------------------------------------------ */
+/* 5️⃣  NAMED EXPORTS                                                  */
+/* ------------------------------------------------------------------ */
+export { detectFramework, generateDockerfile, analyzeProject };

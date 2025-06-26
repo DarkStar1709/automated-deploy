@@ -4,192 +4,233 @@ import {
   UpdateServiceCommand,
   DescribeServicesCommand,
   RegisterTaskDefinitionCommand,
-  DescribeTaskDefinitionCommand
+  DescribeTaskDefinitionCommand,
 } from "@aws-sdk/client-ecs";
-
+import { ECRClient, GetAuthorizationTokenCommand } from "@aws-sdk/client-ecr";
 import {
-  ECRClient,
-  GetAuthorizationTokenCommand,
-  BatchGetImageCommand
-} from "@aws-sdk/client-ecr";
-
+  IAMClient,
+  GetRoleCommand,
+  CreateRoleCommand,
+  AttachRolePolicyCommand,
+  ListAttachedRolePoliciesCommand,
+} from "@aws-sdk/client-iam";
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { execa } from "execa";
 import Logger from "../utils/logger.js";
 
 const logger = new Logger();
 
-export async function pushToECR(localImageName, repositoryUri, region) {
+/* ------------------------------------------------------------------ */
+/* 1. Push local Docker image to ECR                                   */
+/* ------------------------------------------------------------------ */
+export async function pushToECR(localImage, repositoryUri, region) {
   const ecr = new ECRClient({ region });
-  
-  try {
-    // Get ECR login token
-    logger.startSpinner("ecr-auth", "Authenticating with ECR...");
-    const authResult = await ecr.send(new GetAuthorizationTokenCommand({}));
-    const authToken = authResult.authorizationData[0].authorizationToken;
-    const [username, password] = Buffer.from(authToken, 'base64').toString().split(':');
-    const registryUrl = authResult.authorizationData[0].proxyEndpoint;
-    
-    logger.succeedSpinner("ecr-auth", "✅ ECR authentication successful");
+  logger.startSpinner("ecr-auth", "Authenticating with ECR…");
+  const { authorizationData } = await ecr.send(
+    new GetAuthorizationTokenCommand({})
+  );
+  const auth = authorizationData[0];
+  const [user, pass] = Buffer.from(auth.authorizationToken, "base64")
+    .toString()
+    .split(":");
+  await execa(
+    "docker",
+    ["login", "--username", user, "--password-stdin", auth.proxyEndpoint],
+    { input: pass, stdio: global.verbose ? "inherit" : "pipe" }
+  );
+  logger.succeedSpinner("ecr-auth", "✅ Logged into ECR");
 
-    // Docker login to ECR
-    logger.startSpinner("docker-login", "Logging into ECR registry...");
-    await execa("docker", ["login", "--username", username, "--password-stdin", registryUrl], {
-      input: password,
-      stdout: global.verbose ? "inherit" : "pipe",
-      stderr: global.verbose ? "inherit" : "pipe"
-    });
-    logger.succeedSpinner("docker-login", "✅ Docker login successful");
-
-    // Tag image for ECR
-    const ecrImageName = `${repositoryUri}:latest`;
-    logger.startSpinner("docker-tag", `Tagging image: ${ecrImageName}`);
-    await execa("docker", ["tag", localImageName, ecrImageName], {
-      stdout: global.verbose ? "inherit" : "pipe",
-      stderr: global.verbose ? "inherit" : "pipe"
-    });
-    logger.succeedSpinner("docker-tag", "✅ Image tagged successfully");
-
-    // Push to ECR
-    logger.startSpinner("docker-push", `Pushing to ECR: ${ecrImageName}`);
-    await execa("docker", ["push", ecrImageName], {
-      stdout: global.verbose ? "inherit" : "pipe",
-      stderr: global.verbose ? "inherit" : "pipe"
-    });
-    logger.succeedSpinner("docker-push", "✅ Image pushed to ECR successfully");
-
-    return ecrImageName;
-
-  } catch (error) {
-    logger.error("❌ Failed to push to ECR:", error.message);
-    throw error;
-  }
+  const remoteTag = `${repositoryUri}:latest`;
+  logger.startSpinner("ecr-push", `Pushing image ${remoteTag}`);
+  await execa("docker", ["tag", localImage, remoteTag], {
+    stdio: global.verbose ? "inherit" : "pipe",
+  });
+  await execa("docker", ["push", remoteTag], {
+    stdio: global.verbose ? "inherit" : "pipe",
+  });
+  logger.succeedSpinner("ecr-push", "✅ Image pushed");
+  return remoteTag;
 }
 
+/* ------------------------------------------------------------------ */
+/* 2. Ensure/return ARN of execution role                              */
+/* ------------------------------------------------------------------ */
+async function ensureExecutionRole(region, roleName = "ecsTaskExecutionRole") {
+  const iam = new IAMClient({ region });
+  const sts = new STSClient({ region });
+  const { Account } = await sts.send(new GetCallerIdentityCommand({}));
+  const roleArn = `arn:aws:iam::${Account}:role/${roleName}`;
+
+  try {
+    await iam.send(new GetRoleCommand({ RoleName: roleName }));
+  } catch {
+    logger.info(`Creating execution role ${roleName}`);
+    await iam.send(
+      new CreateRoleCommand({
+        RoleName: roleName,
+        AssumeRolePolicyDocument: JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Principal: { Service: "ecs-tasks.amazonaws.com" },
+              Action: "sts:AssumeRole",
+            },
+          ],
+        }),
+      })
+    );
+  }
+
+  const { AttachedPolicies } = await iam.send(
+    new ListAttachedRolePoliciesCommand({ RoleName: roleName })
+  );
+  const policyArn =
+    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy";
+  if (!AttachedPolicies.some((p) => p.PolicyArn === policyArn)) {
+    await iam.send(
+      new AttachRolePolicyCommand({ RoleName: roleName, PolicyArn: policyArn })
+    );
+  }
+  return roleArn;
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Ensure/return ARN of task role                                   */
+/* ------------------------------------------------------------------ */
+async function ensureTaskRole(region, roleName = "ecsTaskRole") {
+  const iam = new IAMClient({ region });
+  const sts = new STSClient({ region });
+  const { Account } = await sts.send(new GetCallerIdentityCommand({}));
+  const roleArn = `arn:aws:iam::${Account}:role/${roleName}`;
+
+  try {
+    await iam.send(new GetRoleCommand({ RoleName: roleName }));
+  } catch {
+    logger.info(`Creating task role ${roleName}`);
+    await iam.send(
+      new CreateRoleCommand({
+        RoleName: roleName,
+        AssumeRolePolicyDocument: JSON.stringify({
+          Version: "2012-10-17",
+          Statement: [
+            {
+              Effect: "Allow",
+              Principal: { Service: "ecs-tasks.amazonaws.com" },
+              Action: "sts:AssumeRole",
+            },
+          ],
+        }),
+      })
+    );
+    await iam.send(
+      new AttachRolePolicyCommand({
+        RoleName: roleName,
+        PolicyArn: "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+      })
+    );
+  }
+  return roleArn;
+}
+
+/* ------------------------------------------------------------------ */
+/* 4. Deploy to ECS                                                   */
+/* ------------------------------------------------------------------ */
 export async function deployToECS({
   clusterName,
   serviceName,
   repositoryUri,
-  region,
-  taskDefinition
+  region = "us-east-1",
+  localImageTag = "latest",
 }) {
   const ecs = new ECSClient({ region });
+  logger.title("🚀 Deploying to ECS");
 
-  try {
-    // Check if service exists
-    logger.startSpinner("service-check", "Checking ECS service status...");
-    let serviceExists = false;
-    let currentTaskDef = null;
+  const executionRoleArn = await ensureExecutionRole(region);
+  const taskRoleArn = await ensureTaskRole(region);
 
-    try {
-      const serviceResult = await ecs.send(new DescribeServicesCommand({
-        cluster: clusterName,
-        services: [serviceName]
-      }));
+  await pushToECR(localImageTag, repositoryUri, region);
 
-      if (serviceResult.services.length > 0 && serviceResult.services[0].status === "ACTIVE") {
-        serviceExists = true;
-        currentTaskDef = serviceResult.services[0].taskDefinition;
-        logger.succeedSpinner("service-check", "✅ Found existing ECS service");
-      } else {
-        logger.succeedSpinner("service-check", "ℹ️ ECS service not found or inactive");
-      }
-    } catch (error) {
-      logger.succeedSpinner("service-check", "ℹ️ ECS service not found");
-    }
+  const { services } = await ecs.send(
+    new DescribeServicesCommand({
+      cluster: clusterName,
+      services: [serviceName],
+    })
+  );
+  if (!services.length) {
+    throw new Error(
+      `Service ${serviceName} not found in cluster ${clusterName}`
+    );
+  }
+  const currentDefArn = services[0].taskDefinition;
+  const { taskDefinition: td } = await ecs.send(
+    new DescribeTaskDefinitionCommand({ taskDefinition: currentDefArn })
+  );
 
-    if (!serviceExists) {
-      logger.error("❌ ECS service not found. Please run resource creation first.");
-      throw new Error("ECS service not found");
-    }
+  const { taskDefinition } = await ecs.send(
+    new RegisterTaskDefinitionCommand({
+      family: td.family,
+      networkMode: td.networkMode,
+      requiresCompatibilities: td.requiresCompatibilities,
+      cpu: td.cpu,
+      memory: td.memory,
+      executionRoleArn,
+      taskRoleArn,
+      containerDefinitions: td.containerDefinitions.map((c) => ({
+        ...c,
+        image: `${repositoryUri}:latest`,
+      })),
+    })
+  );
 
-    // Get current task definition
-    logger.startSpinner("task-def-fetch", "Fetching current task definition...");
-    const taskDefResult = await ecs.send(new DescribeTaskDefinitionCommand({
-      taskDefinition: currentTaskDef
-    }));
-    logger.succeedSpinner("task-def-fetch", "✅ Task definition fetched");
-
-    // Create new task definition with updated image
-    logger.startSpinner("task-def-update", "Creating new task definition...");
-    const oldTaskDef = taskDefResult.taskDefinition;
-    
-    // Update container image
-    const updatedContainers = oldTaskDef.containerDefinitions.map(container => ({
-      ...container,
-      image: `${repositoryUri}:latest`
-    }));
-
-    const newTaskDefParams = {
-      family: oldTaskDef.family,
-      taskRoleArn: oldTaskDef.taskRoleArn || "arn:aws:iam::187393211006:role/ecsTaskExecutionRolee",
-      executionRoleArn: oldTaskDef.executionRoleArn,
-      networkMode: oldTaskDef.networkMode,
-      requiresCompatibilities: oldTaskDef.requiresCompatibilities,
-      cpu: oldTaskDef.cpu,
-      memory: oldTaskDef.memory,
-      containerDefinitions: updatedContainers
-    };
-
-    const newTaskDefResult = await ecs.send(new RegisterTaskDefinitionCommand(newTaskDefParams));
-    const newTaskDefArn = newTaskDefResult.taskDefinition.taskDefinitionArn;
-    logger.succeedSpinner("task-def-update", `✅ New task definition created: ${newTaskDefArn}`);
-
-    // Update service with new task definition
-    logger.startSpinner("service-update", "Updating ECS service...");
-    await ecs.send(new UpdateServiceCommand({
+  await ecs.send(
+    new UpdateServiceCommand({
       cluster: clusterName,
       service: serviceName,
-      taskDefinition: newTaskDefArn,
-      forceNewDeployment: true
-    }));
-    logger.succeedSpinner("service-update", "✅ ECS service updated successfully");
+      taskDefinition: taskDefinition.taskDefinitionArn,
+      forceNewDeployment: true,
+    })
+  );
 
-    // Wait for deployment to stabilize
-    logger.startSpinner("deployment-wait", "Waiting for deployment to complete...");
-    await waitForDeployment(ecs, clusterName, serviceName);
-    logger.succeedSpinner("deployment-wait", "✅ Deployment completed successfully");
-
-    logger.aws("ECS", "DEPLOY", `${clusterName}/${serviceName}`);
-    return newTaskDefArn;
-
-  } catch (error) {
-    logger.error("❌ Failed to deploy to ECS:", error.message);
-    throw error;
-  }
+  await waitForStable(ecs, clusterName, serviceName);
+  logger.success("✅ Deployment successful");
 }
 
-async function waitForDeployment(ecs, clusterName, serviceName, maxWaitTime = 10 * 60 * 1000) {
-  const startTime = Date.now();
-  const pollInterval = 15000; // 15 seconds
+/* ------------------------------------------------------------------ */
+/* 5. Wait for service stability                                      */
+/* ------------------------------------------------------------------ */
+async function waitForStable(ecs, cluster, service, timeout = 10 * 60 * 1000) {
+  const start = Date.now();
+  let printedEventIds = new Set();
 
-  while (Date.now() - startTime < maxWaitTime) {
-    try {
-      const result = await ecs.send(new DescribeServicesCommand({
-        cluster: clusterName,
-        services: [serviceName]
-      }));
+  while (Date.now() - start < timeout) {
+    const { services } = await ecs.send(
+      new DescribeServicesCommand({ cluster, services: [service] })
+    );
+    const svc = services[0];
 
-      const service = result.services[0];
-      const deployments = service.deployments;
-      
-      // Check if primary deployment is stable
-      const primaryDeployment = deployments.find(d => d.status === "PRIMARY");
-      if (primaryDeployment && primaryDeployment.runningCount === primaryDeployment.desiredCount) {
-        // Check if there are any other deployments still running
-        const otherDeployments = deployments.filter(d => d.status !== "PRIMARY");
-        if (otherDeployments.length === 0) {
-          return; // Deployment is stable
+    (svc.events || []).forEach((ev) => {
+      if (!printedEventIds.has(ev.id)) {
+        printedEventIds.add(ev.id);
+        logger.info(`🛈  ${ev.message}`);
+        if (/was stopped|failed|unable to place/i.test(ev.message)) {
+          throw new Error(`Deployment failed: ${ev.message}`);
         }
       }
+    });
 
-      logger.debug(`Deployment in progress. Running: ${primaryDeployment?.runningCount || 0}, Desired: ${primaryDeployment?.desiredCount || 0}`);
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-    } catch (error) {
-      logger.debug("Error checking deployment status:", error.message);
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    const primary = svc.deployments.find((d) => d.status === "PRIMARY");
+    if (
+      primary &&
+      primary.runningCount === primary.desiredCount &&
+      svc.deployments.length === 1
+    ) {
+      logger.success(
+        `✅ Service stable: ${primary.runningCount}/${primary.desiredCount}`
+      );
+      return;
     }
+    await new Promise((r) => setTimeout(r, 15000));
   }
-
-  throw new Error("Deployment timed out");
+  throw new Error("Deployment timed-out; tasks never reached steady state");
 }

@@ -11,10 +11,8 @@ export async function writeEnvKey(key, value) {
     envVars = dotenv.parse(content);
   }
 
-  // Update or add the key
   envVars[key] = value;
 
-  // Format and write back
   const updatedContent = Object.entries(envVars)
     .map(([k, v]) => `${k}=${v}`)
     .join('\n');
